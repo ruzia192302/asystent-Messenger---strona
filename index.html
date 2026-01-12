@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strona z Asystentem</title>
+    <style>
+        /* Prosty styl dla strony głównej */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .content {
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* --- STYLIZACJA ASYSTENTA --- */
+        
+        /* 1. Pływający przycisk (Kółko) */
+        .chat-trigger {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background-color: #0084FF; /* Niebieski Messenger */
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: transform 0.3s ease;
+        }
+
+        .chat-trigger:hover {
+            transform: scale(1.1);
+        }
+
+        .chat-icon {
+            color: white;
+            font-size: 30px;
+            line-height: 1;
+        }
+
+        /* 2. Okno czatu */
+        .chat-window {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 320px;
+            height: 450px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: none; /* Domyślnie ukryte */
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 9998;
+            border: 1px solid #ddd;
+        }
+
+        /* Nagłówek okna */
+        .chat-header {
+            background: #0084FF;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .close-btn { cursor: pointer; font-size: 24px; }
+
+        /* Lista wiadomości */
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Pole wpisywania */
+        .chat-input-area {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #eee;
+            background: #f9f9f9;
+        }
+
+        #userMessage {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        #sendBtn {
+            background: none;
+            border: none;
+            color: #0084FF;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 10px;
+            padding: 0 10px;
+        }
+
+        /* Dymki wiadomości */
+        .msg-user {
+            align-self: flex-end;
+            background-color: #0084FF;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 15px 15px 0 15px;
+            max-width: 80%;
+            font-size: 14px;
+        }
+
+        .msg-system {
+            align-self: flex-start;
+            background-color: #e4e6eb;
+            color: black;
+            padding: 8px 12px;
+            border-radius: 15px 15px 15px 0;
+            max-width: 80%;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="content">
+        <h1>Witaj na mojej stronie</h1>
+        <p>Kliknij dymek w rogu, aby porozmawiać z asystentem.</p>
+    </div>
+
+    <div class="chat-trigger" onclick="toggleChat()">
+        <span class="chat-icon">💬</span>
+    </div>
+
+    <div class="chat-window" id="chatWindow">
+        <div class="chat-header">
+            <span>Asystent Firmowy</span>
+            <span class="close-btn" onclick="toggleChat()">&times;</span>
+        </div>
+        <div class="chat-messages" id="messagesList">
+            <div class="msg-system">Dzień dobry! W czym mogę pomóc?</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="userMessage" placeholder="Napisz wiadomość...">
+            <button id="sendBtn" onclick="sendMessage()">Wyślij</button>
+        </div>
+    </div>
+
+    <script>
+        // Otwieranie i zamykanie
+        function toggleChat() {
+            const window = document.getElementById('chatWindow');
+            if (window.style.display === 'flex') {
+                window.style.display = 'none';
+            } else {
+                window.style.display = 'flex';
+            }
+        }
+
+        // Wysyłanie wiadomości
+        async function sendMessage() {
+            const input = document.getElementById('userMessage');
+            const message = input.value.trim();
+            const messagesList = document.getElementById('messagesList');
+
+            if (!message) return;
+
+            // 1. Dodaj wiadomość użytkownika do okna
+            messagesList.innerHTML += `<div class="msg-user">${message}</div>`;
+            input.value = '';
+            messagesList.scrollTop = messagesList.scrollHeight;
+
+            try {
+                // 2. Wyślij do Vercel API
+                const response = await fetch('/api/webhook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, sender: 'user_website' })
+                });
+
+                if (response.ok) {
+                    // Opcjonalnie: potwierdzenie (w prawdziwym scenariuszu tu czekamy na odpowiedź bota)
+                    console.log('Wysłano do backendu');
+                } else {
+                    messagesList.innerHTML += `<div class="msg-system" style="color:red">Błąd serwera.</div>`;
+                }
+            } catch (error) {
+                console.error(error);
+                messagesList.innerHTML += `<div class="msg-system" style="color:red">Błąd połączenia.</div>`;
+            }
+            messagesList.scrollTop = messagesList.scrollHeight;
+        }
+
+        // Obsługa klawisza Enter
+        document.getElementById("userMessage").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
