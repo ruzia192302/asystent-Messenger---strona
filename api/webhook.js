@@ -1,44 +1,26 @@
-// api/webhook.js
-import axios from 'axios';
-
+// Wersja BEZ błędów - korzysta tylko z tego, co Vercel ma w standardzie
 export default async function handler(req, res) {
-  
-  // 1. WERYFIKACJA WEBHOOKA (Gdy Facebook sprawdza token)
-  if (req.method === 'GET') {
-    const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-    
-    const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
+    // 1. Weryfikacja (żeby Facebook mógł się połączyć)
+    if (req.method === 'GET') {
+        const mode = req.query['hub.mode'];
+        const token = req.query['hub.verify_token'];
+        const challenge = req.query['hub.challenge'];
+        
+        // Twój token weryfikacyjny
+        const MY_VERIFY_TOKEN = 'I9JU23NF394R6HH';
 
-    if (mode && token) {
-      if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-        console.log('WEBHOOK_VERIFIED');
-        return res.status(200).send(challenge);
-      } else {
-        return res.status(403).send('Forbidden');
-      }
-    }
-    return res.status(400).send('Bad Request');
-  }
-
-  // 2. ODBIERANIE WIADOMOŚCI (POST)
-  if (req.method === 'POST') {
-    const body = req.body;
-
-    // A. Wiadomość ze strony WWW
-    if (body.sender === 'user_website') {
-        console.log("Wiadomość od klienta WWW:", body.message);
-        // Tutaj w przyszłości dodasz logikę wysyłania do API Messengera
-        return res.status(200).json({ status: 'odebrano' });
+        if (mode && token === MY_VERIFY_TOKEN) {
+            return res.status(200).send(challenge);
+        }
+        return res.status(403).send('Błąd weryfikacji');
     }
 
-    // B. Wiadomość z Facebooka
-    if (body.object === 'page') {
-      // Obsługa zdarzeń z Facebooka (dla weryfikacji)
-      return res.status(200).send('EVENT_RECEIVED');
+    // 2. Odbieranie wiadomości ze strony WWW
+    if (req.method === 'POST') {
+        const body = req.body;
+        console.log('✅ OTRZYMANO:', body.message);
+        return res.status(200).json({ status: 'ok' });
     }
 
-    return res.status(404).send('Not Found');
-  }
+    return res.status(200).send('Asystent gotowy');
 }
