@@ -26,14 +26,12 @@ export default async function handler(req, res) {
         return res.status(403).send('Błąd weryfikacji');
     }
 
-    // 3. ODBIERANIE WIADOMOŚCI (Ze strony WWW)
+    // 3. ODBIERANIE WIADOMOŚCI
     if (req.method === 'POST') {
         try {
             const body = req.body;
-            console.log('📨 Nowa wiadomość ze strony:', body.message);
-            
-            // Tutaj Vercel odbiera wiadomość.
-            // W następnym etapie dodamy tu kod, który przesyła ją dalej na Messenger.
+            // Ta linijka pokaże nam WSZYSTKIE szczegóły (w tym Twój ID, gdy do siebie napiszesz)
+            console.log('📦 OTRZYMANO PAKIET:', JSON.stringify(body, null, 2)); 
             
             return res.status(200).json({ status: 'ok' });
         } catch (error) {
@@ -44,3 +42,4 @@ export default async function handler(req, res) {
 
     return res.status(200).send('Serwer Vercel działa poprawnie!');
 }
+
