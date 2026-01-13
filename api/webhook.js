@@ -1,9 +1,10 @@
 export default async function handler(req, res) {
-    // --- KONFIGURACJA ---
-    const VERIFY_TOKEN = 'I9JU23NF394R6HH'; // Hasło dla Facebooka
+    // --- TWOJE DANE KONFIGURACYJNE ---
+    const VERIFY_TOKEN = 'I9JU23NF394R6HH';
     const PAGE_ACCESS_TOKEN = 'EAANDHAkTYvIBQRL40wyZC3tGmFOCG6eNQNZCQ4VJYua7rg6XfTNuSTstZAJa42CiH6fmx6BXTSkCIvZAuO2XBZBGvB3w712lx3SsPZCVhC7s1VESQcScXhmmyypYCCZAUWjpu3MFw8ZAscIKjPkQCogN5h7AzBmLXc4dAtB7mVTwUFO8friXRgBiyzSIhTT1C0filZCj03HtRiAZDZD';
+    const MOJE_ID = '25694094406889787'; // Twój numer, który znalazłaś!
 
-    // 1. ZGODA NA POŁĄCZENIE (Dla Twojej strony)
+    // 1. Nagłówki (żeby strona nie krzyczała o błędach)
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -14,32 +15,46 @@ export default async function handler(req, res) {
         return;
     }
 
-    // 2. WERYFIKACJA (To jest kluczowe dla kroku na Facebooku!)
+    // 2. Weryfikacja Facebooka (musi zostać, żeby nie rozłączyło)
     if (req.method === 'GET') {
-        const mode = req.query['hub.mode'];
-        const token = req.query['hub.verify_token'];
-        const challenge = req.query['hub.challenge'];
-
-        if (mode && token === VERIFY_TOKEN) {
-            return res.status(200).send(challenge);
+        if (req.query['hub.verify_token'] === VERIFY_TOKEN) {
+            return res.status(200).send(req.query['hub.challenge']);
         }
         return res.status(403).send('Błąd weryfikacji');
     }
 
-    // 3. ODBIERANIE WIADOMOŚCI
+    // 3. GŁÓWNA FUNKCJA: PRZEKAZYWANIE WIADOMOŚCI
     if (req.method === 'POST') {
         try {
             const body = req.body;
-            // Ta linijka pokaże nam WSZYSTKIE szczegóły (w tym Twój ID, gdy do siebie napiszesz)
-            console.log('📦 OTRZYMANO PAKIET:', JSON.stringify(body, null, 2)); 
-            
+
+            // A) Jeśli wiadomość przychodzi ze STRONY WWW (od klienta)
+            if (body.message) {
+                console.log('📨 Klient pisze:', body.message);
+
+                // Wyślij to na Twój Messenger!
+                await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        recipient: { id: MOJE_ID },
+                        message: { text: `🔔 KLIENT ZE STRONY:\n"${body.message}"` }
+                    })
+                });
+                
+                return res.status(200).json({ status: 'wyslano' });
+            }
+
+            // B) Jeśli to Facebook sprawdza połączenie (ping)
+            if (body.object === 'page') {
+                return res.status(200).send('EVENT_RECEIVED');
+            }
+
             return res.status(200).json({ status: 'ok' });
+
         } catch (error) {
             console.error('Błąd:', error);
-            return res.status(500).json({ error: 'Błąd serwera' });
+            return res.status(500).json({ error: 'Ups, coś poszło nie tak' });
         }
     }
-
-    return res.status(200).send('Serwer Vercel działa poprawnie!');
 }
-
