@@ -1,60 +1,74 @@
+// api/webhook.js
+// UWAGA: To jest uproszczony magazyn pamięci. Na produkcji użyj np. Vercel KV / Redis.
+let TEMP_MESSAGES = []; 
+
 export default async function handler(req, res) {
-    // --- TWOJE DANE KONFIGURACYJNE ---
-    const VERIFY_TOKEN = 'I9JU23NF394R6HH';
-    const PAGE_ACCESS_TOKEN = 'EAANDHAkTYvIBQRL40wyZC3tGmFOCG6eNQNZCQ4VJYua7rg6XfTNuSTstZAJa42CiH6fmx6BXTSkCIvZAuO2XBZBGvB3w712lx3SsPZCVhC7s1VESQcScXhmmyypYCCZAUWjpu3MFw8ZAscIKjPkQCogN5h7AzBmLXc4dAtB7mVTwUFO8friXRgBiyzSIhTT1C0filZCj03HtRiAZDZD';
-    const MOJE_ID = '25694094406889787'; // Twój numer, który znalazłaś!
+  
+  // 1. ODBIERANIE WIADOMOŚCI OD STRONY WWW (POST)
+  if (req.method === 'POST') {
+    const body = req.body;
 
-    // 1. Nagłówki (żeby strona nie krzyczała o błędach)
-    res.setHeader('Access-Control-Allow-Credentials', true);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+    // A. Wiadomość ze strony WWW (użytkownik pisze do Ciebie)
+    if (body.sender === 'user_website') {
+        console.log("Wiadomość od klienta WWW:", body.message);
+        // Tu powinna być logika wysyłki do Messengera (zakładam, że masz to zrobione, skoro działa)
+        return res.status(200).json({ status: 'odebrano' });
     }
 
-    // 2. Weryfikacja Facebooka (musi zostać, żeby nie rozłączyło)
-    if (req.method === 'GET') {
-        if (req.query['hub.verify_token'] === VERIFY_TOKEN) {
-            return res.status(200).send(req.query['hub.challenge']);
-        }
-        return res.status(403).send('Błąd weryfikacji');
-    }
-
-    // 3. GŁÓWNA FUNKCJA: PRZEKAZYWANIE WIADOMOŚCI
-    if (req.method === 'POST') {
-        try {
-            const body = req.body;
-
-            // A) Jeśli wiadomość przychodzi ze STRONY WWW (od klienta)
-            if (body.message) {
-                console.log('📨 Klient pisze:', body.message);
-
-                // Wyślij to na Twój Messenger!
-                await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        recipient: { id: MOJE_ID },
-                        message: { text: `🔔 KLIENT ZE STRONY:\n"${body.message}"` }
-                    })
-                });
+    // B. Wiadomość z Facebooka (Ty odpisujesz klientowi)
+    if (body.object === 'page') {
+      
+      // Iterujemy przez zdarzenia (Facebook może przysłać kilka naraz)
+      body.entry.forEach(entry => {
+        if (entry.messaging) {
+            let webhook_event = entry.messaging[0];
+            
+            // Sprawdzamy czy to wiadomość tekstowa (a nie np. potwierdzenie przeczytania)
+            if (webhook_event.message && webhook_event.message.text) {
+                const text = webhook_event.message.text;
+                const senderID = webhook_event.sender.id; // PSID użytkownika (tutaj Twoje lub klienta)
                 
-                return res.status(200).json({ status: 'wyslano' });
+                console.log(`Otrzymano odpowiedź z Messengera: ${text}`);
+
+                // ZAPISZ WIADOMOŚĆ, ABY STRONA MOGŁA JĄ POBRAĆ
+                // W produkcji tutaj robisz: await db.collection('messages').add({ text, from: 'admin' })
+                TEMP_MESSAGES.push({
+                    text: text,
+                    timestamp: new Date(),
+                    from: 'admin'
+                });
             }
-
-            // B) Jeśli to Facebook sprawdza połączenie (ping)
-            if (body.object === 'page') {
-                return res.status(200).send('EVENT_RECEIVED');
-            }
-
-            return res.status(200).json({ status: 'ok' });
-
-        } catch (error) {
-            console.error('Błąd:', error);
-            return res.status(500).json({ error: 'Ups, coś poszło nie tak' });
         }
+      });
+
+      return res.status(200).send('EVENT_RECEIVED');
     }
+  }
+
+  // 2. ENDPOINT DLA STRONY WWW DO POBIERANIA ODPOWIEDZI (GET)
+  // Dodajemy nową obsługę metody GET, aby strona mogła pytać "czy są nowe wiadomości?"
+  if (req.method === 'GET') {
+      // Weryfikacja Facebooka (pozostawiamy bez zmian)
+      if (req.query['hub.mode']) {
+          const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+          const mode = req.query['hub.mode'];
+          const token = req.query['hub.verify_token'];
+          const challenge = req.query['hub.challenge'];
+          
+          if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+              return res.status(200).send(challenge);
+          }
+          return res.status(403).send('Forbidden');
+      }
+
+      // NOWOŚĆ: Jeśli strona pyta o wiadomości
+      if (req.query.action === 'get_messages') {
+          // Zwracamy wiadomości i czyścimy bufor (prosta kolejka)
+          const messagesToSend = [...TEMP_MESSAGES];
+          TEMP_MESSAGES = []; // Czyścimy po wysłaniu (aby nie dublować)
+          return res.status(200).json({ messages: messagesToSend });
+      }
+  }
+
+  return res.status(404).send('Not Found');
 }
