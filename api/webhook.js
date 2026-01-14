@@ -1,35 +1,57 @@
-// api/webhook.js
+import axios from 'axios';
+
 let TEMP_MESSAGES = []; 
 
 export default async function handler(req, res) {
   
-  // --- SEKCJA CORS (TO JEST NOWE - ODBLOKOWUJE POŁĄCZENIE) ---
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Pozwala każdemu (lub wpisz tu domenę swojej strony)
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 
-  // Obsługa zapytania wstępnego (przeglądarka pyta: "czy mogę wysłać?")
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-  // -----------------------------------------------------------
 
-  // 1. ODBIERANIE WIADOMOŚCI OD STRONY WWW (POST)
   if (req.method === 'POST') {
     const body = req.body;
 
+    // 1. Wiadomość ze strony -> do Messengera
     if (body.sender === 'user_website') {
-        console.log("Wiadomość od klienta WWW:", body.message);
+        const userMessage = body.message;
+        const PAGE_ACCESS_TOKEN = 'EAANDHAkTYvIBQRL40wyZC3tGmFOCG6eNQNZCQ4VJYua7rg6XfTNuSTstZAJa42CiH6fmx6BXTSkCIvZAuO2XBZBGvB3w712lx3SsPZCVhC7s1VESQcScXhmmyypYCCZAUWjpu3MFw8ZAscIKjPkQCogN5h7AzBmLXc4dAtB7mVTwUFO8friXRgBiyzSIhTT1C0filZCj03HtRiAZDZD';
+        const ADMIN_ID = process.env.ADMIN_ID; 
+
+        // Jeśli nie ma ID, tylko logujemy próbę (żeby nie wywaliło błędu)
+        if (!ADMIN_ID) {
+            console.log("BRAK ADMIN_ID - Wiadomość nie zostanie wysłana do Messengera, ale API działa.");
+        } else {
+             try {
+                await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
+                    recipient: { id: ADMIN_ID },
+                    message: { text: `📢 Klient WWW pisze:\n"${userMessage}"` }
+                });
+            } catch (error) {
+                console.error("Błąd FB:", error.message);
+            }
+        }
         return res.status(200).json({ status: 'odebrano' });
     }
 
+    // 2. Wiadomość z Facebooka
     if (body.object === 'page') {
       body.entry.forEach(entry => {
         if (entry.messaging) {
-            let webhook_event = entry.messaging[0];
-            if (webhook_event.message && webhook_event.message.text) {
+            const webhook_event = entry.messaging[0];
+            
+            // --- TUTAJ JEST TA WAŻNA ZMIANA ---
+            if (webhook_event.sender && webhook_event.sender.id) {
+                console.log("!!! TWOJE ID (ADMIN_ID) TO: " + webhook_event.sender.id + " !!!");
+            }
+            // ----------------------------------
+
+            if (webhook_event.message && !webhook_event.message.is_echo && webhook_event.message.text) {
                 const text = webhook_event.message.text;
-                console.log(`Otrzymano odpowiedź z Messengera: ${text}`);
+                console.log(`Admin odpisał: ${text}`);
                 TEMP_MESSAGES.push({
                     text: text,
                     timestamp: new Date(),
@@ -42,11 +64,10 @@ export default async function handler(req, res) {
     }
   }
 
-  // 2. ENDPOINT DO POBIERANIA ODPOWIEDZI (GET)
   if (req.method === 'GET') {
-      if (req.query['hub.mode']) {
-          const VERIFY_TOKEN = 'marcin23';
-          if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === VERIFY_TOKEN) {
+      if (req.query['hub.mode'] === 'subscribe') {
+          const VERIFY_TOKEN ='marcin23'; 
+          if (req.query['hub.verify_token'] === VERIFY_TOKEN) {
               return res.status(200).send(req.query['hub.challenge']);
           }
           return res.status(403).send('Forbidden');
@@ -61,5 +82,4 @@ export default async function handler(req, res) {
 
   return res.status(404).send('Not Found');
 }
-
 
