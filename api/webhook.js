@@ -45,7 +45,7 @@ export default async function handler(req, res) {
   // 2. ENDPOINT DO POBIERANIA ODPOWIEDZI (GET)
   if (req.method === 'GET') {
       if (req.query['hub.mode']) {
-          const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+          const VERIFY_TOKEN ='Marcin.23';
           if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === VERIFY_TOKEN) {
               return res.status(200).send(req.query['hub.challenge']);
           }
@@ -61,3 +61,4 @@ export default async function handler(req, res) {
 
   return res.status(404).send('Not Found');
 }
+
