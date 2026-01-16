@@ -1,6 +1,6 @@
 // api/webhook.js
 // WERSJA NAPRAWCZA - KOMPLETNA
-// To naprawi "Server Error 500" i pokaże w logach, co się dzieje.
+// To naprawi "Server Error 500" i pokaże w logach co się dzieje.
 
 export default async function handler(req, res) {
   
