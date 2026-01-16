@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     // 1. Wiadomość ze strony -> do Messengera
     if (body.sender === 'user_website') {
         const userMessage = body.message;
-        const PAGE_ACCESS_TOKEN = 'EAANDHAkTYvIBQRL40wyZC3tGmFOCG6eNQNZCQ4VJYua7rg6XfTNuSTstZAJa42CiH6fmx6BXTSkCIvZAuO2XBZBGvB3w712lx3SsPZCVhC7s1VESQcScXhmmyypYCCZAUWjpu3MFw8ZAscIKjPkQCogN5h7AzBmLXc4dAtB7mVTwUFO8friXRgBiyzSIhTT1C0filZCj03HtRiAZDZD';
+        const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
         const ADMIN_ID = process.env.ADMIN_ID; 
 
         // Jeśli nie ma ID, tylko logujemy próbę (żeby nie wywaliło błędu)
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
       if (req.query['hub.mode'] === 'subscribe') {
-          const VERIFY_TOKEN ='marcin23'; 
+          const VERIFY_TOKEN = process.env.VERIFY_TOKEN; 
           if (req.query['hub.verify_token'] === VERIFY_TOKEN) {
               return res.status(200).send(req.query['hub.challenge']);
           }
@@ -82,4 +82,3 @@ export default async function handler(req, res) {
 
   return res.status(404).send('Not Found');
 }
-
