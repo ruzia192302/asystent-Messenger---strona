@@ -1,54 +1,53 @@
 import { kv } from '@vercel/kv';
 
 export default async function handler(req, res) {
-  
-  // ---------------------------------------------------------
-  // 1. OBSŁUGA METODY GET (Weryfikacja FB + Pobieranie wiadomości przez stronę)
-  // ---------------------------------------------------------
+
+  // -----------------------------------------------------------------
+  // 1. METODA GET: Weryfikacja FB LUB Pobieranie wiadomości przez stronę
+  // -----------------------------------------------------------------
   if (req.method === 'GET') {
     
-    // A. Czy to Twoja strona pyta o nowe wiadomości? (Polling)
+    // A. Czy to Twoja strona pyta o wiadomości? (Polling)
     if (req.query.action === 'get_messages') {
         try {
-            // Pobierz wiadomości z bazy
+            // Pobieramy wiadomości z "pudełka"
             const messages = await kv.lrange('chat_messages', 0, -1);
             
             if (messages && messages.length > 0) {
-                // Wyczyść pobrane wiadomości, żeby nie wyświetlały się w kółko
+                // Czyścimy pudełko po pobraniu, żeby nie czytać 2 razy tego samego
                 await kv.del('chat_messages');
                 
-                // Zwróć je do skryptu na stronie
+                // Wysyłamy do strony WWW
                 return res.status(200).json({ 
                     messages: messages.map(m => typeof m === 'string' ? JSON.parse(m) : m) 
                 });
             }
-            // Brak nowych wiadomości
             return res.status(200).json({ messages: [] });
         } catch (error) {
-            return res.status(500).json({ error: 'Błąd bazy danych' });
+            console.error(error);
+            return res.status(200).json({ messages: [] }); // Nie psuj strony błędami
         }
     }
 
-    // B. Weryfikacja Facebooka (nie ruszamy tego)
+    // B. Weryfikacja Facebooka (Twój token: marcin20)
     if (req.query['hub.verify_token'] === 'marcin20') {
       return res.status(200).send(req.query['hub.challenge']);
     }
 
-    return res.status(403).send('Błąd tokenu lub brak akcji');
+    return res.status(403).send('Błąd weryfikacji');
   }
 
-  // ---------------------------------------------------------
-  // 2. OBSŁUGA METODY POST (Odbieranie wiadomości)
-  // ---------------------------------------------------------
+  // -----------------------------------------------------------------
+  // 2. METODA POST: Odbieranie wiadomości od FB i strony
+  // -----------------------------------------------------------------
   if (req.method === 'POST') {
     const body = req.body;
 
-    // A. Wiadomość wysłana ze strony WWW (tylko potwierdzamy odbiór)
+    // A. Wiadomość wysłana ze strony WWW (tylko potwierdzamy)
     if (body.sender === 'user_website') {
-       // Tutaj normalnie byłby kod wysyłający to do API Facebooka
-       // Zakładam, że masz to obsłużone lub robisz to w innym miejscu.
-       // Jeśli nie, daj znać - dopiszemy to.
-       return res.status(200).json({ status: 'odebrano_od_www' });
+       // Tutaj kod wysyłający do FB (jeśli masz go w innym miejscu, to OK)
+       // Jeśli nie, API FB powinno być wywołane tutaj.
+       return res.status(200).json({ status: 'ok' });
     }
 
     // B. Wiadomość przychodzi z Facebooka (Messenger)
@@ -57,19 +56,18 @@ export default async function handler(req, res) {
       await Promise.all(body.entry.map(async (entry) => {
         const webhook_event = entry.messaging[0];
         
-        if (webhook_event.message) {
-            const text = webhook_event.message.text;
+        // Jeśli to wiadomość tekstowa
+        if (webhook_event.message && webhook_event.message.text) {
             
-            // Jeśli jest treść, zapisujemy ją dla strony WWW
-            if (text) {
-                await kv.rpush('chat_messages', JSON.stringify({
-                    text: text,
-                    from: 'messenger',
-                    timestamp: Date.now()
-                }));
-                // Wiadomość wygasa po 1h (sprzątanie)
-                await kv.expire('chat_messages', 3600);
-            }
+            // Zapisujemy w bazie KV
+            await kv.rpush('chat_messages', JSON.stringify({
+                text: webhook_event.message.text,
+                from: 'messenger', 
+                timestamp: Date.now()
+            }));
+            
+            // Wiadomości wygasają po 1h (żeby nie zapchać bazy)
+            await kv.expire('chat_messages', 3600);
         }
       }));
 
@@ -77,6 +75,5 @@ export default async function handler(req, res) {
     }
   }
 
-  // Inne metody
   res.status(405).end();
 }
