@@ -1,51 +1,65 @@
-// api/webhook.js
-// WERSJA NAPRAWCZA - KOMPLETNA
-// To naprawi "Server Error 500" i pokaże w logach co się dzieje.
+import { kv } from '@vercel/kv';
 
 export default async function handler(req, res) {
   
-  // 1. Logujemy każde uderzenie do serwera
-  console.log("🔔 COŚ PUKA DO SERWERA! Metoda:", req.method);
-
-  // 2. Weryfikacja Facebooka (GET)
+  // 1. Weryfikacja Facebooka (To u Ciebie działało dobrze)
   if (req.method === 'GET') {
-      // Tu jest wpisane Twoje hasło na sztywno: marcin23
-      if (req.query['hub.verify_token'] === 'marcin23') {
-          console.log("✅ Facebook weryfikuje token - SUKCES");
-          return res.status(200).send(req.query['hub.challenge']);
-      }
-      return res.status(403).send('Złe hasło');
+    if (req.query['hub.verify_token'] === 'marcin20') { // Twój token ze screena
+      return res.status(200).send(req.query['hub.challenge']);
+    }
+    return res.status(403).send('Błąd tokenu');
   }
 
-  // 3. Odbieranie wiadomości (POST)
+  // 2. Odbieranie wiadomości (POST)
   if (req.method === 'POST') {
-    console.log("📩 Otrzymano dane POST:", JSON.stringify(req.body, null, 2));
-    
     const body = req.body;
 
-    // Sytuacja A: Wiadomość ze strony WWW
+    // A. Obsługa wiadomości wysłanej ze strony WWW (Twoja logika)
     if (body.sender === 'user_website') {
-        console.log("To wiadomość ze strony WWW!");
-        // Tu normalnie wysyłamy do admina, ale na razie tylko logujemy, żeby nie psuć
-        return res.status(200).json({ status: 'odebrano_www' });
+       console.log('Wiadomość wysłana ze strony:', body.message);
+       // Tutaj zakładam, że masz kod wysyłający do FB, którego nie widać na screenie
+       // lub robisz to w innym pliku. Zostawiam bez zmian.
+       return res.status(200).json({ status: 'odebrano_www' });
     }
 
-    // Sytuacja B: Wiadomość z Facebooka (Messenger)
+    // B. Obsługa wiadomości z Facebooka (Messenger)
     if (body.object === 'page') {
-      console.log("To wiadomość z Facebooka!");
-      body.entry.forEach(entry => {
-        if (entry.messaging) {
-            const webhook_event = entry.messaging[0];
+      
+      // Musimy poczekać na przetworzenie wszystkich wpisów
+      await Promise.all(body.entry.map(async (entry) => {
+        const webhook_event = entry.messaging[0];
+        
+        // Sprawdzamy czy to wiadomość
+        if (webhook_event.message) {
             
-            // LOGUJEMY ID NADAWCY (To jest to, czego szukamy!)
-            if (webhook_event.sender && webhook_event.sender.id) {
-                console.log("🔥 BOMBA! MAMY ID: " + webhook_event.sender.id);
+            // Pobieramy treść wiadomości
+            const text = webhook_event.message.text;
+            // Pobieramy ID rozmówcy (lub ID odbiorcy jeśli to echo od admina)
+            const senderId = webhook_event.sender.id;
+            const recipientId = webhook_event.recipient.id;
+
+            // Logika: Jeśli wiadomość jest echem (od Admina) lub zwykłą wiadomością
+            // Zapisujemy ją w bazie, aby strona mogła ją pobrać.
+            // Używamy klucza "chat_messages" (uproszczone dla jednej konwersacji)
+            
+            if (text) {
+                // Zapisz wiadomość w bazie KV (Redis)
+                // Wygasa po 1 godzinie (3600 sekund) żeby nie zapychać bazy
+                await kv.rpush('chat_messages', JSON.stringify({
+                    text: text,
+                    from: 'messenger',
+                    timestamp: Date.now()
+                }));
+                await kv.expire('chat_messages', 3600);
             }
         }
-      });
+      }));
+
       return res.status(200).send('EVENT_RECEIVED');
     }
   }
-
-  return res.status(200).send('OK');
+  
+  // Obsługa innych metod
+  res.setHeader('Allow', ['GET', 'POST']);
+  res.status(405).end(`Method ${req.method} Not Allowed`);
 }
