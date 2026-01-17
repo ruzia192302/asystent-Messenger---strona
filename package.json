@@ -1,7 +1,14 @@
 {
   "name": "asystent-messenger",
   "version": "1.0.0"
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "@vercel/kv": "latest"
+  }
 }
+
 
 
 
