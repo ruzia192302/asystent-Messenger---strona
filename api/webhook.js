@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     }
 
     // B. Weryfikacja Facebooka (To już miałaś)
-    if (req.query['hub.verify_token'] === 'marcin20') {
+    if (req.query['hub.verify_token'] === 'marcin23') {
       return res.status(200).send(req.query['hub.challenge']);
     }
 
@@ -63,3 +63,4 @@ export default async function handler(req, res) {
 
   res.status(405).end();
 }
+
