@@ -1,66 +1,63 @@
-import { kv } from '@vercel/kv';
+const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios');
 
-export default async function handler(req, res) {
+const app = express();
+app.use(bodyParser.json());
 
-  // 1. METODA GET (Weryfikacja FB + Odbieranie wiadomości przez stronę)
-  if (req.method === 'GET') {
-    
-    // A. Czy to Twoja strona pyta o wiadomości? (Tego brakowało!)
-    if (req.query.action === 'get_messages') {
-        try {
-            const messages = await kv.lrange('chat_messages', 0, -1);
-            
-            if (messages && messages.length > 0) {
-                // Czyścimy, żeby nie wyświetlać w kółko tego samego
-                await kv.del('chat_messages'); 
-                
-                return res.status(200).json({ 
-                    messages: messages.map(m => typeof m === 'string' ? JSON.parse(m) : m) 
-                });
-            }
-            return res.status(200).json({ messages: [] });
-        } catch (error) {
-            console.error(error);
-            return res.status(200).json({ messages: [] });
-        }
+// POBIERAMY TWOJE TOKENY Z VERCEL
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+
+// Strona startowa (żebyś widziała, że działa w przeglądarce)
+app.get('/', (req, res) => {
+  res.send('🟢 VERCEL BOT DZIAŁA! (Wersja Express)');
+});
+
+// 1. WERYFIKACJA (Dla Facebooka)
+app.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('✅ WEBHOOK ZWERYFIKOWANY!');
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
     }
-
-    // B. Weryfikacja Facebooka (To już miałaś)
-    if (req.query['hub.verify_token'] === 'marcin23') {
-      return res.status(200).send(req.query['hub.challenge']);
-    }
-
-    return res.status(403).send('Brak dostępu lub błędny token');
   }
+});
 
-  // 2. METODA POST (Przyjmowanie wiadomości z FB i strony)
-  if (req.method === 'POST') {
-    const body = req.body;
+// 2. ODBIERANIE WIADOMOŚCI
+app.post('/webhook', (req, res) => {
+  const body = req.body;
 
-    // A. Jeśli wiadomość od strony WWW -> po prostu OK
-    if (body.sender === 'user_website') {
-       return res.status(200).json({ status: 'ok' });
-    }
+  if (body.object === 'page') {
+    body.entry.forEach(function(entry) {
+      let webhook_event = entry.messaging ? entry.messaging[0] : null;
 
-    // B. Jeśli wiadomość z Facebooka -> Zapisz do bazy
-    if (body.object === 'page') {
-      await Promise.all(body.entry.map(async (entry) => {
-        const webhook_event = entry.messaging[0];
+      if (webhook_event && webhook_event.message && webhook_event.message.text) {
+        let senderId = webhook_event.sender.id;
+        let text = webhook_event.message.text;
         
-        // Zapisujemy tylko jeśli jest tekst
-        if (webhook_event.message && webhook_event.message.text) {
-            await kv.rpush('chat_messages', JSON.stringify({
-                text: webhook_event.message.text,
-                from: 'messenger', 
-                timestamp: Date.now()
-            }));
-            await kv.expire('chat_messages', 3600);
-        }
-      }));
-      return res.status(200).send('EVENT_RECEIVED');
-    }
+        console.log(`📩 Otrzymano od ${senderId}: ${text}`);
+
+        // ODSYŁANIE WIADOMOŚCI
+        axios.post(`https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
+          recipient: { id: senderId },
+          message: { text: `Odpisuję z Vercel: ${text}` }
+        }).catch(err => {
+            console.error('❌ BŁĄD:', err.message);
+        });
+      }
+    });
+    res.status(200).send('EVENT_RECEIVED');
+  } else {
+    res.sendStatus(404);
   }
+});
 
-  res.status(405).end();
-}
-
+// Eksport dla Vercel
+module.exports = app;
