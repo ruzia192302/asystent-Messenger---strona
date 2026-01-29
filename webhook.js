@@ -1,20 +1,22 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const cors = require('cors'); // Dodajemy, żeby strona WWW mogła się łączyć
 
 const app = express();
 app.use(bodyParser.json());
+app.use(cors()); // Zezwolenie na połączenie z innej strony (CORS)
 
-// POBIERAMY TWOJE TOKENY Z VERCEL
+// ZMIENNE
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 
-// Strona startowa (żebyś widziała, że działa w przeglądarce)
+// 1. STRONA GŁÓWNA
 app.get('/', (req, res) => {
-  res.send('🟢 VERCEL BOT DZIAŁA! (Wersja Express)');
+  res.send('🟢 VERCEL BOT DZIAŁA! Messenger + API Strony');
 });
 
-// 1. WERYFIKACJA (Dla Facebooka)
+// 2. WERYFIKACJA FACEBOOKA
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -30,7 +32,7 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// 2. ODBIERANIE WIADOMOŚCI
+// 3. ODBIERANIE WIADOMOŚCI Z MESSENGERA
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
@@ -42,15 +44,13 @@ app.post('/webhook', (req, res) => {
         let senderId = webhook_event.sender.id;
         let text = webhook_event.message.text;
         
-        console.log(`📩 Otrzymano od ${senderId}: ${text}`);
+        console.log(`📩 FB MSG: ${text} od ${senderId}`);
 
-        // ODSYŁANIE WIADOMOŚCI
+        // Odpowiedź na FB
         axios.post(`https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
           recipient: { id: senderId },
-          message: { text: `Odpisuję z Vercel: ${text}` }
-        }).catch(err => {
-            console.error('❌ BŁĄD:', err.message);
-        });
+          message: { text: `Vercel odpisuje: ${text}` }
+        }).catch(err => console.error('❌ BŁĄD FB:', err.message));
       }
     });
     res.status(200).send('EVENT_RECEIVED');
@@ -59,5 +59,22 @@ app.post('/webhook', (req, res) => {
   }
 });
 
-// Eksport dla Vercel
+// 4. OBSŁUGA STRONY WWW (To naprawi czerwone błędy 404)
+// Ponieważ nie mamy bazy danych, zrobimy prostą symulację, żeby błędy zniknęły.
+
+app.get('/api/get_reply', (req, res) => {
+  // Widget pyta: "Czy są nowe wiadomości?"
+  // Odpowiadamy pustą listą, bo bez bazy danych nie mamy gdzie ich trzymać
+  res.status(200).json({ messages: [] });
+});
+
+app.post('/api/send_to_admin', (req, res) => {
+  // Widget wysyła wiadomość do Ciebie
+  const { text } = req.body;
+  console.log(`🌍 WWW MSG: ${text}`);
+  
+  // Tu można dodać logikę wysyłania powiadomienia, na razie potwierdzamy odbiór
+  res.status(200).json({ status: 'ok', reply: 'Wiadomość dotarła do serwera (bez bazy danych)' });
+});
+
 module.exports = app;
