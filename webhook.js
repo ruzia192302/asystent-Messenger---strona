@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const { kv } = require('@vercel/kv'); // Włączamy bazę danych!
 
 const app = express();
 app.use(cors());
@@ -11,11 +12,11 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 
 // -------------------------------------------------------
-// TU WPISZ SWÓJ NUMER ID (Ten z logów, od którego przyszło "test")
+// WPISZ TUTAJ SWÓJ NUMER ID (Ten z logów)
 const ADMIN_ID = "25694094406889787"; 
 // -------------------------------------------------------
 
-// MESSENGER (Odbieranie i odsyłanie na Messengerze)
+// --- MESSENGER (Odbieranie od Admina i zapisywanie dla strony) ---
 app.get('/webhook', (req, res) => {
   if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === VERIFY_TOKEN) {
     res.status(200).send(req.query['hub.challenge']);
@@ -24,57 +25,70 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   let body = req.body;
   if (body.object === 'page') {
-    body.entry.forEach(entry => {
+    for (const entry of body.entry) {
       let event = entry.messaging ? entry.messaging[0] : null;
+      
       if (event && event.message && event.message.text) {
         let text = event.message.text;
         let sender = event.sender.id;
         
-        console.log(`📩 FB OD ${sender}: ${text}`);
-
-        // Tutaj moglibyśmy zapisać odpowiedź do bazy dla strony WWW (Etap 2)
-        // Na razie bot po prostu potwierdza na Messengerze
-        /*
-        axios.post(`https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
-           recipient: { id: sender },
-           message: { text: `Bot: Otrzymałem "${text}"` }
-        }).catch(e => console.error(e));
-        */
+        // SPRAWDZAMY KTO PISZE
+        if (sender === ADMIN_ID) {
+            // TO JESTEŚ TY (ADMIN)!
+            // Zapisujemy Twoją odpowiedź w bazie dla strony WWW
+            console.log(`👩‍💼 ADMIN ODPISUJE: ${text}`);
+            
+            // Wrzucamy wiadomość do "szufladki" o nazwie 'chat_replies'
+            await kv.lpush('chat_replies', text); 
+            
+        } else {
+            // TO KTOŚ OBCY (np. testujesz z innego konta FB)
+            console.log(`👤 KTOŚ NA FB: ${text}`);
+        }
       }
-    });
+    }
     res.status(200).send('EVENT_RECEIVED');
   } else {
     res.sendStatus(404);
   }
 });
 
-// STRONA WWW -> MESSENGER (TO JEST NOWOŚĆ!)
+// --- STRONA WWW -> MESSENGER ---
 app.post('/api/send_to_admin', (req, res) => {
   const text = req.body.message || req.body.text;
-  
   if (!text) return res.json({ status: 'error' });
 
-  console.log(`🌍 WWW PRZEKAZUJĘ DO ADMINA: ${text}`);
+  console.log(`🌍 WWW -> ADMIN: ${text}`);
 
-  // WYSYŁAMY WIADOMOŚĆ DO CIEBIE NA MESSENGER!
+  // Wysyłamy do Ciebie na Messenger
   axios.post(`https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
-    recipient: { id: ADMIN_ID }, // Wysyłamy do Ciebie
-    message: { text: `🌍 KLIENT WWW: ${text}` }
-  }).then(() => {
-      console.log("✅ Wysłano do Admina na FB");
-      res.json({ status: 'ok', reply: 'Wiadomość wysłana do konsultanta' });
-  }).catch(err => {
-      console.error("❌ Błąd wysyłania na FB:", err.response ? err.response.data : err.message);
-      res.json({ status: 'error', reply: 'Błąd serwera' });
-  });
+    recipient: { id: ADMIN_ID },
+    message: { text: `🌍 WWW: ${text}` }
+  }).catch(e => console.error(e));
+
+  res.json({ status: 'ok' });
 });
 
-// Zapytanie o nowe wiadomości (Na razie puste, bo brak bazy)
-app.get('/api/get_reply', (req, res) => {
-  res.json({ messages: [] });
+// --- STRONA WWW PYTA O ODPOWIEDŹ (POLLING) ---
+app.get('/api/get_reply', async (req, res) => {
+  try {
+    // Sprawdzamy, czy w bazie są nowe odpowiedzi od Admina
+    // rpop zdejmuje wiadomość z listy (żeby nie wyświetlała się w kółko)
+    const reply = await kv.rpop('chat_replies');
+    
+    if (reply) {
+        console.log(`📤 WYSYŁAM DO WWW: ${reply}`);
+        res.json({ messages: [reply] });
+    } else {
+        res.json({ messages: [] }); // Pusto, brak nowych wiadomości
+    }
+  } catch (error) {
+      console.error(error);
+      res.json({ messages: [] });
+  }
 });
 
 module.exports = app;
